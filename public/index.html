@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sélection Aléatoire Sécurisée</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; color: #333; padding: 30px; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #181643; margin-bottom: 25px; }
+        .section { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        textarea { width: 100%; height: 100px; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; resize: vertical; }
+        button { background-color: #181643; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; transition: background 0.2s; }
+        button:hover { background-color: #27246a; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .result-box { text-align: center; background: #eef2ff; border: 2px dashed #181643; padding: 20px; border-radius: 6px; margin: 20px 0; min-height: 40px; }
+        .winner { font-size: 24px; font-weight: bold; color: #181643; }
+        .status { font-style: italic; color: #666; margin-top: 5px; }
+        .list-history { background: #fafafa; padding: 10px; border-radius: 4px; max-height: 150px; overflow-y: auto; font-size: 14px; }
+        .error { color: #d9534f; font-weight: bold; text-align: center; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Sélection de Mission</h1>
+
+    <div id="setup-section" class="section">
+        <h3>Configuration de la liste</h3>
+        <p style="font-size: 13px; color: #666;">Entrez un nom par ligne :</p>
+        <textarea id="names-input" placeholder="Exemple :&#10;Jean&#10;Pierre&#10;Paul"></textarea>
+        <button id="init-btn" onclick="initializeList()" style="margin-top: 10px; background-color: #28a745;">Charger et Verrouiller la Liste</button>
+    </div>
+
+    <div id="draw-section" class="section">
+        <button id="draw-btn" onclick="drawPerson()" disabled>🎯 Sélectionner une personne au hasard</button>
+        
+        <div class="result-box">
+            <div id="result-display" class="winner">En attente du tirage...</div>
+            <div id="remaining-count" class="status"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>Personnes déjà sélectionnées :</h3>
+        <div id="history-list" class="list-history">Aucune pour le moment.</div>
+    </div>
+
+    <button id="reset-btn" onclick="resetApp()" style="background-color: #dc3545;" disabled>Remettre à zéro (Fin de liste uniquement)</button>
+    
+    <div id="error-message" class="error"></div>
+</div>
+
+<script>
+    // Au chargement de la page, on vérifie l'état actuel côté serveur
+    window.onload = checkStatus;
+
+    async function checkStatus() {
+        const response = await fetch('/api/state');
+        const data = await response.json();
+        
+        document.getElementById('error-message').innerText = "";
+
+        if (data.hasList) {
+            // Une liste est en cours ou terminée
+            document.getElementById('names-input').disabled = true;
+            document.getElementById('init-btn').disabled = true;
+            document.getElementById('draw-btn').disabled = data.isFinished;
+            
+            if (data.currentSelection) {
+                document.getElementById('result-display').innerText = data.currentSelection;
+            }
+            
+            document.getElementById('remaining-count').innerText = `Restant(s) à piocher : ${data.remainingCount}`;
+            
+            // Affichage de l'historique
+            if(data.drawnPeople.length > 0) {
+                document.getElementById('history-list').innerHTML = data.drawnPeople.map((name, index) => `<div>${index + 1}. ${name}</div>`).join('');
+            }
+
+            // Activer le bouton reset UNIQUEMENT si c'est fini
+            document.getElementById('reset-btn').disabled = !data.isFinished;
+        } else {
+            // Aucune liste chargée
+            document.getElementById('names-input').disabled = false;
+            document.getElementById('init-btn').disabled = false;
+            document.getElementById('draw-btn').disabled = true;
+            document.getElementById('reset-btn').disabled = true;
+            document.getElementById('result-display').innerText = "Veuillez charger une liste.";
+            document.getElementById('remaining-count').innerText = "";
+            document.getElementById('history-list').innerText = "Aucune pour le moment.";
+        }
+    }
+
+    async function initializeList() {
+        const text = document.getElementById('names-input').value;
+        const names = text.split('\n').filter(n => n.trim() !== "");
+        
+        if (names.length === 0) {
+            alert("Veuillez entrer au moins un nom.");
+            return;
+        }
+
+        const response = await fetch('/api/init', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ names })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            checkStatus();
+        } else {
+            document.getElementById('error-message').innerText = data.error;
+        }
+    }
+
+    async function drawPerson() {
+        const response = await fetch('/api/draw', { method: 'POST' });
+        const data = await response.json();
+        
+        if (response.ok) {
+            checkStatus();
+        } else {
+            document.getElementById('error-message').innerText = data.error;
+        }
+    }
+
+    async function resetApp() {
+        const response = await fetch('/api/reset', { method: 'POST' });
+        const data = await response.json();
+        
+        if (response.ok) {
+            document.getElementById('names-input').value = "";
+            checkStatus();
+        } else {
+            document.getElementById('error-message').innerText = data.error;
+        }
+    }
+</script>
+</body>
+</html>
