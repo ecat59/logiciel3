@@ -52,8 +52,17 @@
 </div>
 
 <script>
-    // Au chargement de la page, on vérifie l'état actuel côté serveur
-    window.onload = checkStatus;
+    // Au chargement de la page
+    window.onload = function() {
+        // 1. On récupère la liste sauvegardée dans l'ordinateur s'il y en a une
+        const savedNames = localStorage.getItem('savedDriverList');
+        if (savedNames) {
+            document.getElementById('names-input').value = savedNames;
+        }
+        
+        // 2. On vérifie l'état actuel sur le serveur Render
+        checkStatus();
+    };
 
     async function checkStatus() {
         const response = await fetch('/api/state');
@@ -62,7 +71,6 @@
         document.getElementById('error-message').innerText = "";
 
         if (data.hasList) {
-            // Une liste est en cours ou terminée
             document.getElementById('names-input').disabled = true;
             document.getElementById('init-btn').disabled = true;
             document.getElementById('draw-btn').disabled = data.isFinished;
@@ -73,15 +81,12 @@
             
             document.getElementById('remaining-count').innerText = `Restant(s) à piocher : ${data.remainingCount}`;
             
-            // Affichage de l'historique
             if(data.drawnPeople.length > 0) {
                 document.getElementById('history-list').innerHTML = data.drawnPeople.map((name, index) => `<div>${index + 1}. ${name}</div>`).join('');
             }
 
-            // Activer le bouton reset UNIQUEMENT si c'est fini
             document.getElementById('reset-btn').disabled = !data.isFinished;
         } else {
-            // Aucune liste chargée
             document.getElementById('names-input').disabled = false;
             document.getElementById('init-btn').disabled = false;
             document.getElementById('draw-btn').disabled = true;
@@ -89,6 +94,12 @@
             document.getElementById('result-display').innerText = "Veuillez charger une liste.";
             document.getElementById('remaining-count').innerText = "";
             document.getElementById('history-list').innerText = "Aucune pour le moment.";
+            
+            // Si la liste est vide sur le serveur mais qu'on a une sauvegarde locale, on la remet dans le champ
+            const savedNames = localStorage.getItem('savedDriverList');
+            if (savedNames && !document.getElementById('names-input').value) {
+                document.getElementById('names-input').value = savedNames;
+            }
         }
     }
 
@@ -100,6 +111,9 @@
             alert("Veuillez entrer au moins un nom.");
             return;
         }
+
+        // SAUVEGARDE : On enregistre la liste dans la mémoire locale du navigateur
+        localStorage.setItem('savedDriverList', text);
 
         const response = await fetch('/api/init', {
             method: 'POST',
@@ -131,7 +145,8 @@
         const data = await response.json();
         
         if (response.ok) {
-            document.getElementById('names-input').value = "";
+            // Note : On ne vide plus le champ de texte ici, on appelle juste checkStatus()
+            // Comme ça, les noms restent écrits pour le coup d'après !
             checkStatus();
         } else {
             document.getElementById('error-message').innerText = data.error;
